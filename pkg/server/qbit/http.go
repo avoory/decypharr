@@ -8,6 +8,7 @@ import (
 	"github.com/sirrobot01/decypharr/internal/config"
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/arr"
+	"github.com/sirrobot01/decypharr/pkg/manager"
 	"github.com/sirrobot01/decypharr/pkg/storage"
 )
 
@@ -124,7 +125,12 @@ func (q *QBit) handleTorrentsAdd(w http.ResponseWriter, r *http.Request) {
 		// Arr is not in context
 		_arr = arr.New(category, "", "", false, false, nil, "", "")
 	}
-	atleastOne := false
+
+	type queuedRequest struct {
+		req    *manager.ImportRequest
+		source string
+	}
+	queued := make([]queuedRequest, 0)
 
 	// Handle magnet URLs
 	if urls := r.FormValue("urls"); urls != "" {
@@ -133,12 +139,16 @@ func (q *QBit) handleTorrentsAdd(w http.ResponseWriter, r *http.Request) {
 			urlList = append(urlList, strings.TrimSpace(u))
 		}
 		for _, url := range urlList {
-			if err := q.addMagnet(ctx, url, _arr, debridName, action, cfg.Notifications.CallbackURL, rmTrackerUrls, cfg.SkipMultiSeason); err != nil {
+			if url == "" {
+				continue
+			}
+			importReq, err := q.buildMagnetRequest(url, _arr, debridName, action, cfg.Notifications.CallbackURL, rmTrackerUrls, cfg.SkipMultiSeason)
+			if err != nil {
 				q.logger.Debug().Msgf("Error adding magnet: %s", err.Error())
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			atleastOne = true
+			queued = append(queued, queuedRequest{req: importReq, source: url})
 		}
 	}
 
@@ -146,19 +156,30 @@ func (q *QBit) handleTorrentsAdd(w http.ResponseWriter, r *http.Request) {
 	if r.MultipartForm != nil && r.MultipartForm.File != nil {
 		if files := r.MultipartForm.File["torrents"]; len(files) > 0 {
 			for _, fileHeader := range files {
-				if err := q.addTorrent(ctx, fileHeader, _arr, debridName, action, cfg.Notifications.CallbackURL, rmTrackerUrls, cfg.SkipMultiSeason); err != nil {
+				importReq, err := q.buildTorrentRequest(fileHeader, _arr, debridName, action, cfg.Notifications.CallbackURL, rmTrackerUrls, cfg.SkipMultiSeason)
+				if err != nil {
 					q.logger.Debug().Err(err).Msgf("Error adding torrent")
 					http.Error(w, err.Error(), http.StatusBadRequest)
 					return
 				}
-				atleastOne = true
+				queued = append(queued, queuedRequest{req: importReq, source: fileHeader.Filename})
 			}
 		}
 	}
 
-	if !atleastOne {
+	if len(queued) == 0 {
 		http.Error(w, "No valid URLs or torrents provided", http.StatusBadRequest)
 		return
+	}
+
+	for _, item := range queued {
+		req := item.req
+		source := item.source
+		go func() {
+			if err := q.manager.AddNewTorrent(q.manager.Context(), req); err != nil {
+				q.logger.Error().Err(err).Str("source", source).Msg("Failed to add torrent")
+			}
+		}()
 	}
 
 	w.WriteHeader(http.StatusOK)
