@@ -15,6 +15,7 @@ type Debrid struct {
 	RateLimit                    string   `json:"rate_limit,omitempty"` // 200/minute or 10/second
 	RepairRateLimit              string   `json:"repair_rate_limit,omitempty"`
 	DownloadRateLimit            string   `json:"download_rate_limit,omitempty"`
+	CreateRateLimit              string   `json:"create_rate_limit,omitempty"`
 	Proxy                        string   `json:"proxy,omitempty"`
 	UnpackRar                    bool     `json:"unpack_rar,omitempty"`
 	MinimumFreeSlot              int      `json:"minimum_free_slot,omitempty"` // Minimum active pots to use this debrid

@@ -42,6 +42,7 @@ type Torbox struct {
 	accountsManager       *account.Manager
 	autoExpiresLinksAfter time.Duration
 	client                *request.Client
+	createClient          *request.Client
 	logger                zerolog.Logger
 	Profile               *types.Profile
 	config                config.Debrid
@@ -62,15 +63,20 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Torbox, er
 	}
 	_log := logger.New(dc.Name)
 
-	opts := []request.ClientOption{
+	baseOpts := []request.ClientOption{
 		request.WithHeaders(headers),
-		request.WithRateLimiter(ratelimits["main"]),
 		request.WithMaxRetries(cfg.Retries),
 		request.WithRetryableStatus(http.StatusTooManyRequests, http.StatusBadGateway),
 	}
 	if dc.Proxy != "" {
-		opts = append(opts, request.WithProxy(dc.Proxy))
+		baseOpts = append(baseOpts, request.WithProxy(dc.Proxy))
 	}
+
+	mainOpts := append([]request.ClientOption{}, baseOpts...)
+	mainOpts = append(mainOpts, request.WithRateLimiter(ratelimits["main"]))
+
+	createOpts := append([]request.ClientOption{}, baseOpts...)
+	createOpts = append(createOpts, request.WithRateLimiter(ratelimits["create"]))
 
 	autoExpiresLinksAfter, err := utils.ParseDuration(dc.AutoExpireLinksAfter)
 	if autoExpiresLinksAfter == 0 || err != nil {
@@ -83,7 +89,8 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Torbox, er
 		accountsManager:       account.NewManager(dc, ratelimits["download"], _log),
 		config:                dc,
 		autoExpiresLinksAfter: autoExpiresLinksAfter,
-		client:                request.New(opts...),
+		client:                request.New(mainOpts...),
+		createClient:          request.New(createOpts...),
 		logger:                _log,
 	}
 	return tb, nil
@@ -134,6 +141,13 @@ func (tb *Torbox) doGet(endpoint string, queryParams map[string]string, result i
 
 // doPostForm performs a POST request with form data
 func (tb *Torbox) doPostForm(endpoint string, formData map[string]string, result interface{}) (*http.Response, error) {
+	return tb.doPostFormWithClient(tb.client, endpoint, formData, result)
+}
+
+func (tb *Torbox) doPostFormWithClient(client *request.Client, endpoint string, formData map[string]string, result interface{}) (*http.Response, error) {
+	if client == nil {
+		client = tb.client
+	}
 	form := url.Values{}
 	for k, v := range formData {
 		form.Set(k, v)
@@ -145,7 +159,7 @@ func (tb *Torbox) doPostForm(endpoint string, formData map[string]string, result
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := tb.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +250,7 @@ func (tb *Torbox) SubmitMagnet(torrent *types.Torrent) (*types.Torrent, error) {
 		formData["add_only_if_cached"] = "true"
 	}
 
-	resp, err := tb.doPostForm("/api/torrents/createtorrent", formData, &data)
+	resp, err := tb.doPostFormWithClient(tb.createClient, "/api/torrents/createtorrent", formData, &data)
 	if err != nil {
 		return nil, err
 	}

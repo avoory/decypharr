@@ -76,6 +76,7 @@ Array of Debrid services:
 | `rate_limit`                      | string | API rate limit (`200/minute`, `10/second`)                       | `200/minute`                    |
 | `repair_rate_limit`               | string | Separate limit for repair operations                             | Same as `rate_limit`            |
 | `download_rate_limit`             | string | Separate limit for downloads                                     | Same as `rate_limit`            |
+| `create_rate_limit`               | string | Separate limit for create operations (e.g., TorBox create torrent) | Same as `rate_limit`            |
 | `proxy`                           | string | HTTP(S) proxy URL                                                | `""`                            |
 | `unpack_rar`                      | bool   | Auto-extract RAR archives                                        | `true`                          |
 | `minimum_free_slot`               | int    | Minimum free torrent slots to use this provider                  | `0`                             |

@@ -54,7 +54,8 @@ class ConfigManager {
         try {
             const response = await window.decypharrUtils.fetcher('/api/config');
             if (!response.ok) {
-                throw new Error('Failed to load configuration');
+                window.decypharrUtils.createToast('Failed to load configuration', 'error');
+                return;
             }
 
             const config = await response.json();
@@ -120,34 +121,53 @@ class ConfigManager {
         }
 
         if (!repair) return;
-        const $ = (id) => document.getElementById(id);
-        if ($('repair.enabled')) $('repair.enabled').checked = !!repair.enabled;
-        if ($('repair.source')) $('repair.source').value = repair.source || 'arr';
-        if ($('repair.schedule')) $('repair.schedule').value = repair.schedule || '';
-        if ($('repair.recheck_interval')) $('repair.recheck_interval').value = repair.recheck_interval || '';
-        if ($('repair.workers')) $('repair.workers').value = repair.workers || 5;
-        if ($('repair.nntp_connection_percent')) $('repair.nntp_connection_percent').value = repair.nntp_connection_percent || 20;
-        if ($('repair.strategy')) $('repair.strategy').value = repair.strategy || 'per_entry';
-        if ($('repair.auto_repair')) $('repair.auto_repair').checked = !!repair.auto_repair;
-        if ($('repair.notify_on_complete')) $('repair.notify_on_complete').checked = !!repair.notify_on_complete;
+        const getById = (id) => document.getElementById(id);
+        const repairEnabled = getById('repair.enabled');
+        const repairSource = getById('repair.source');
+        const repairSchedule = getById('repair.schedule');
+        const repairRecheckInterval = getById('repair.recheck_interval');
+        const repairWorkers = getById('repair.workers');
+        const repairNntpPercent = getById('repair.nntp_connection_percent');
+        const repairStrategy = getById('repair.strategy');
+        const repairAuto = getById('repair.auto_repair');
+        const repairNotify = getById('repair.notify_on_complete');
+
+        if (repairEnabled) repairEnabled.checked = !!repair.enabled;
+        if (repairSource) repairSource.value = repair.source || 'arr';
+        if (repairSchedule) repairSchedule.value = repair.schedule || '';
+        if (repairRecheckInterval) repairRecheckInterval.value = repair.recheck_interval || '';
+        if (repairWorkers) repairWorkers.value = repair.workers || 5;
+        if (repairNntpPercent) repairNntpPercent.value = repair.nntp_connection_percent || 20;
+        if (repairStrategy) repairStrategy.value = repair.strategy || 'per_entry';
+        if (repairAuto) repairAuto.checked = !!repair.auto_repair;
+        if (repairNotify) repairNotify.checked = !!repair.notify_on_complete;
     }
 
     collectRepairConfig() {
-        const $ = (id) => document.getElementById(id);
-        const arrsSelect = $('repair.arrs');
+        const getById = (id) => document.getElementById(id);
+        const arrsSelect = getById('repair.arrs');
+        const repairEnabled = getById('repair.enabled');
+        const repairSource = getById('repair.source');
+        const repairSchedule = getById('repair.schedule');
+        const repairRecheckInterval = getById('repair.recheck_interval');
+        const repairWorkers = getById('repair.workers');
+        const repairNntpPercent = getById('repair.nntp_connection_percent');
+        const repairStrategy = getById('repair.strategy');
+        const repairAuto = getById('repair.auto_repair');
+        const repairNotify = getById('repair.notify_on_complete');
         const arrs = arrsSelect
             ? Array.from(arrsSelect.selectedOptions).map((o) => o.value).filter(Boolean)
             : [];
         return {
-            enabled: $('repair.enabled')?.checked || false,
-            source: $('repair.source')?.value || 'arr',
-            schedule: $('repair.schedule')?.value.trim() || '',
-            recheck_interval: $('repair.recheck_interval')?.value.trim() || '',
-            workers: parseInt($('repair.workers')?.value, 10) || 0,
-            nntp_connection_percent: parseInt($('repair.nntp_connection_percent')?.value, 10) || 0,
-            strategy: $('repair.strategy')?.value || 'per_entry',
-            auto_repair: $('repair.auto_repair')?.checked || false,
-            notify_on_complete: $('repair.notify_on_complete')?.checked || false,
+            enabled: repairEnabled?.checked || false,
+            source: repairSource?.value || 'arr',
+            schedule: repairSchedule?.value.trim() || '',
+            recheck_interval: repairRecheckInterval?.value.trim() || '',
+            workers: parseInt(repairWorkers?.value, 10) || 0,
+            nntp_connection_percent: parseInt(repairNntpPercent?.value, 10) || 0,
+            strategy: repairStrategy?.value || 'per_entry',
+            auto_repair: repairAuto?.checked || false,
+            notify_on_complete: repairNotify?.checked || false,
             arrs,
         };
     }
@@ -388,7 +408,7 @@ class ConfigManager {
         });
     }
 
-    getDebridTemplate(index, data = {}) {
+    getDebridTemplate(index) {
         return `
         <div class="card bg-base-100 border border-base-300 shadow-sm debrid-config" data-index="${index}">
             <div class="card-body">
@@ -485,6 +505,15 @@ class ConfigManager {
                                        name="debrid[${index}].download_rate_limit" id="debrid[${index}].download_rate_limit" 
                                        placeholder="150/minute">
                                 <span class="text-sm opacity-70">API rate limit for download operations</span>
+                            </div>
+                            <div>
+                                <label class="label" for="debrid[${index}].create_rate_limit">
+                                    <span class=" font-medium">Create Rate Limit</span>
+                                </label>
+                                <input type="text" class="input w-full" 
+                                       name="debrid[${index}].create_rate_limit" id="debrid[${index}].create_rate_limit" 
+                                       placeholder="60/hour">
+                                <span class="text-sm opacity-70">Overrides rate limit for create operations (leave empty to use Rate Limit)</span>
                             </div>
                             <div>
                                 <label class="label" for="debrid[${index}].proxy">
@@ -1055,7 +1084,9 @@ class ConfigManager {
             // Validate configuration
             const validation = this.validateConfiguration(config);
             if (!validation.valid) {
-                throw new Error(validation.errors.join('\n'));
+                window.decypharrUtils.createToast(validation.errors.join('\n'), 'error');
+                this.refs.loadingOverlay.classList.add('hidden');
+                return;
             }
 
             const response = await window.decypharrUtils.fetcher('/api/config', {
@@ -1066,7 +1097,9 @@ class ConfigManager {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(errorText || 'Failed to save configuration');
+                window.decypharrUtils.createToast(errorText || 'Failed to save configuration', 'error');
+                this.refs.loadingOverlay.classList.add('hidden');
+                return;
             }
 
             window.decypharrUtils.createToast('Configuration saved successfully! Services are restarting...', 'success');
@@ -1257,20 +1290,19 @@ class ConfigManager {
             const rateLimitInput = getField('rate_limit');
             const repairRateLimitInput = getField('repair_rate_limit');
             const downloadRateLimitInput = getField('download_rate_limit');
+            const createRateLimitInput = getField('create_rate_limit');
             const minimumFreeSlotInput = getField('minimum_free_slot');
             const proxyInput = getField('proxy');
             const downloadUncachedInput = getField('download_uncached');
             const unpackRarInput = getField('unpack_rar');
             const addSamplesInput = getField('add_samples');
             const userAgentInput = getField('user_agent');
-            const downloadKeysTextarea = getField('download_api_keys');
+            const downloadApiKeysInput = getField('download_api_keys');
             const torrentsRefreshIntervalInput = getField('torrents_refresh_interval');
             const downloadLinksRefreshIntervalInput = getField('download_links_refresh_interval');
             const autoExpireLinksAfterInput = getField('auto_expire_links_after');
 
-            if (!nameInput || !providerInput || !apiKeyInput || !rateLimitInput || !repairRateLimitInput || !downloadRateLimitInput ||
-                !minimumFreeSlotInput || !proxyInput || !downloadUncachedInput || !unpackRarInput || !addSamplesInput ||
-                !userAgentInput || !torrentsRefreshIntervalInput || !downloadLinksRefreshIntervalInput || !autoExpireLinksAfterInput) {
+            if (!nameInput || !providerInput || !apiKeyInput || !rateLimitInput || !repairRateLimitInput || !downloadRateLimitInput || !createRateLimitInput || !minimumFreeSlotInput || !proxyInput || !downloadUncachedInput || !unpackRarInput || !addSamplesInput || !userAgentInput || !torrentsRefreshIntervalInput || !downloadLinksRefreshIntervalInput || !autoExpireLinksAfterInput) {
                 return;
             }
 
@@ -1281,6 +1313,7 @@ class ConfigManager {
                 rate_limit: rateLimitInput.value,
                 repair_rate_limit: repairRateLimitInput.value,
                 download_rate_limit: downloadRateLimitInput.value,
+                create_rate_limit: createRateLimitInput.value,
                 minimum_free_slot: parseInt(minimumFreeSlotInput.value) || 0,
                 proxy: proxyInput.value,
                 download_uncached: downloadUncachedInput.checked,
@@ -1289,12 +1322,11 @@ class ConfigManager {
                 user_agent: userAgentInput.value
             };
 
-            // Handle download API keys
-            if (downloadKeysTextarea && downloadKeysTextarea.value.trim()) {
-                debrid.download_api_keys = downloadKeysTextarea.value
+            if (downloadApiKeysInput && downloadApiKeysInput.value.trim()) {
+                debrid.download_api_keys = downloadApiKeysInput.value
                     .split('\n')
-                    .map(key => key.trim())
-                    .filter(key => key.length > 0);
+                    .map((line) => line.trim())
+                    .filter((line) => line.length > 0);
             }
 
             debrid.torrents_refresh_interval = torrentsRefreshIntervalInput.value;
@@ -1703,7 +1735,7 @@ class ConfigManager {
         });
     }
 
-    getUsenetProviderTemplate(index, data = {}) {
+    getUsenetProviderTemplate(index) {
         return `
         <div class="card bg-base-200 border border-base-300 usenet-provider" data-index="${index}">
             <div class="card-body">

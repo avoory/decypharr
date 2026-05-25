@@ -50,10 +50,12 @@ func (m *Manager) createClient(dc config.Debrid) (debrid.Client, error) {
 	mainRL := utils.ParseRateLimit(dc.RateLimit)
 	repairRL := utils.ParseRateLimit(cmp.Or(dc.RepairRateLimit, dc.RateLimit))
 	downloadRL := utils.ParseRateLimit(cmp.Or(dc.DownloadRateLimit, dc.RateLimit))
+	createRL := utils.ParseRateLimit(cmp.Or(dc.CreateRateLimit, dc.RateLimit))
 
 	rateLimits["main"] = mainRL
 	rateLimits["repair"] = repairRL
 	rateLimits["download"] = downloadRL
+	rateLimits["create"] = createRL
 
 	switch dc.Provider {
 	case "realdebrid":

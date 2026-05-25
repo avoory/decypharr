@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/sirrobot01/decypharr/internal/config"
@@ -349,6 +350,23 @@ func (m *Manager) SendToDebrid(ctx context.Context, importRequest *ImportRequest
 			overrideDownloadUncached = db.Config().DownloadUncached
 		}
 		debridTorrent.DownloadUncached = overrideDownloadUncached
+
+		if !overrideDownloadUncached && db.Config().Provider == "torbox" {
+			infoHash := strings.TrimSpace(debridTorrent.InfoHash)
+			if infoHash == "" {
+				return nil, customerror.NewPermanentError(fmt.Errorf("torbox cache check failed: empty infohash"))
+			}
+			cached := false
+			available := db.IsAvailable([]string{infoHash})
+			if available != nil {
+				if available[infoHash] || available[strings.ToUpper(infoHash)] || available[strings.ToLower(infoHash)] {
+					cached = true
+				}
+			}
+			if !cached {
+				return nil, customerror.NewPermanentError(fmt.Errorf("torbox cache miss for %s", debridTorrent.Name))
+			}
+		}
 		_logger := db.Logger()
 		_logger.Info().
 			Str("Provider", db.Config().Name).
