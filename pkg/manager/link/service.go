@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog"
@@ -14,6 +15,7 @@ import (
 	debrid "github.com/sirrobot01/decypharr/pkg/debrid/common"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 	"github.com/sirrobot01/decypharr/pkg/storage"
+	"go.uber.org/ratelimit"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -33,15 +35,16 @@ type EntrySaver func(entry *storage.Entry) error
 // Service handles download link fetching and validation.
 // It uses the account-level cache for storing links and only tracks validation state.
 type Service struct {
-	validated      *xsync.Map[string, error]
-	singleflight   singleflight.Group
-	clients        *xsync.Map[string, debrid.Client]
-	entryRefresher EntryRefresher
-	repairer       EntryRepairer
-	entrySaver     EntrySaver
-	httpClient     *http.Client
-	retries        int
-	logger         zerolog.Logger
+	validated          *xsync.Map[string, error]
+	singleflight       singleflight.Group
+	clients            *xsync.Map[string, debrid.Client]
+	entryRefresher     EntryRefresher
+	repairer           EntryRepairer
+	entrySaver         EntrySaver
+	httpClient         *http.Client
+	retries            int
+	logger             zerolog.Logger
+	downloadRateLimits map[string]ratelimit.Limiter
 }
 
 // New creates a new LinkService
@@ -53,16 +56,18 @@ func New(
 	httpClient *http.Client,
 	retries int,
 	logger zerolog.Logger,
+	downloadRateLimits map[string]ratelimit.Limiter,
 ) *Service {
 	return &Service{
-		validated:      xsync.NewMap[string, error](),
-		clients:        clients,
-		entryRefresher: entryRefresher,
-		repairer:       entryReinsert,
-		entrySaver:     entrySaver,
-		httpClient:     httpClient,
-		retries:        retries,
-		logger:         logger,
+		validated:          xsync.NewMap[string, error](),
+		clients:            clients,
+		entryRefresher:     entryRefresher,
+		repairer:           entryReinsert,
+		entrySaver:         entrySaver,
+		httpClient:         httpClient,
+		retries:            retries,
+		logger:             logger,
+		downloadRateLimits: downloadRateLimits,
 	}
 }
 
@@ -352,6 +357,11 @@ func (s *Service) validateLink(ctx context.Context, link *types.DownloadLink) er
 		return NewPermanentError(fmt.Errorf("download url is empty for %s||%s", link.Filename, link.Link), "empty_link")
 	}
 
+	if limiter := s.getDownloadRateLimiter(link); limiter != nil {
+		// Throttle Torbox requestdl validation to respect per-token API limits.
+		limiter.Take()
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "HEAD", link.DownloadLink, nil)
 	if err != nil {
 		return NewPermanentError(
@@ -379,6 +389,23 @@ func (s *Service) validateLink(ctx context.Context, link *types.DownloadLink) er
 	}
 
 	return ErrorCodeToLinkError(errorCode)
+}
+
+func (s *Service) getDownloadRateLimiter(link *types.DownloadLink) ratelimit.Limiter {
+	if link == nil || link.Debrid == "" || s.downloadRateLimits == nil {
+		return nil
+	}
+	if !strings.Contains(link.DownloadLink, "/api/torrents/requestdl") {
+		return nil
+	}
+	client, err := s.getClient(link.Debrid)
+	if err != nil {
+		return nil
+	}
+	if !strings.EqualFold(client.Config().Provider, "torbox") {
+		return nil
+	}
+	return s.downloadRateLimits[link.Debrid]
 }
 
 // disableLinkAccount handles errors that require disabling an account

@@ -25,6 +25,7 @@ import (
 	"github.com/sirrobot01/decypharr/pkg/storage"
 	"github.com/sirrobot01/decypharr/pkg/usenet"
 	"github.com/sirrobot01/decypharr/pkg/version"
+	"go.uber.org/ratelimit"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -261,6 +262,21 @@ func (m *Manager) initUsenet() {
 
 // initLinkService initializes the link service
 func (m *Manager) initLinkService() {
+	downloadRateLimits := make(map[string]ratelimit.Limiter)
+	for _, debridCfg := range m.config.Debrids {
+		if debridCfg.Name == "" {
+			continue
+		}
+		rateLimit := debridCfg.DownloadRateLimit
+		if rateLimit == "" {
+			rateLimit = debridCfg.RateLimit
+		}
+		ratelimiter := utils.ParseRateLimit(rateLimit)
+		if ratelimiter != nil {
+			downloadRateLimits[debridCfg.Name] = ratelimiter
+		}
+	}
+
 	m.linkService = link.New(
 		m.clients,
 		m.refreshTorrent,
@@ -269,6 +285,7 @@ func (m *Manager) initLinkService() {
 		m.streamClient,
 		m.config.Retries,
 		logger.New("link"),
+		downloadRateLimits,
 	)
 }
 
