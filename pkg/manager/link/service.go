@@ -357,6 +357,12 @@ func (s *Service) validateLink(ctx context.Context, link *types.DownloadLink) er
 		return NewPermanentError(fmt.Errorf("download url is empty for %s||%s", link.Filename, link.Link), "empty_link")
 	}
 
+	if s.isTorboxRequestDL(link) {
+		// Torbox requestdl is validated by the actual download/stream request.
+		// Skipping the HEAD saves an extra API call per file.
+		return nil
+	}
+
 	if limiter := s.getDownloadRateLimiter(link); limiter != nil {
 		// Throttle Torbox requestdl validation to respect per-token API limits.
 		limiter.Take()
@@ -395,17 +401,24 @@ func (s *Service) getDownloadRateLimiter(link *types.DownloadLink) ratelimit.Lim
 	if link == nil || link.Debrid == "" || s.downloadRateLimits == nil {
 		return nil
 	}
-	if !strings.Contains(link.DownloadLink, "/api/torrents/requestdl") {
-		return nil
-	}
-	client, err := s.getClient(link.Debrid)
-	if err != nil {
-		return nil
-	}
-	if !strings.EqualFold(client.Config().Provider, "torbox") {
+	if !s.isTorboxRequestDL(link) {
 		return nil
 	}
 	return s.downloadRateLimits[link.Debrid]
+}
+
+func (s *Service) isTorboxRequestDL(link *types.DownloadLink) bool {
+	if link == nil || link.Debrid == "" {
+		return false
+	}
+	if !strings.Contains(link.DownloadLink, "/api/torrents/requestdl") {
+		return false
+	}
+	client, err := s.getClient(link.Debrid)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(client.Config().Provider, "torbox")
 }
 
 // disableLinkAccount handles errors that require disabling an account
