@@ -106,6 +106,8 @@ func (tb *Torbox) Logger() zerolog.Logger {
 
 // doGet performs a GET request and unmarshals the response
 func (tb *Torbox) doGet(endpoint string, queryParams map[string]string, result interface{}) (*http.Response, error) {
+	tb.logger.Debug().Str("endpoint", endpoint).Msg("requesting torbox api")
+
 	u, err := url.Parse(tb.Host + endpoint)
 	if err != nil {
 		return nil, err
@@ -154,6 +156,8 @@ func (tb *Torbox) doPostForm(endpoint string, formData map[string]string, result
 }
 
 func (tb *Torbox) doPostFormWithClient(client *request.Client, endpoint string, formData map[string]string, result interface{}) (*http.Response, error) {
+	tb.logger.Debug().Str("endpoint", endpoint).Msg("requesting torbox api")
+
 	if client == nil {
 		client = tb.client
 	}
@@ -194,6 +198,8 @@ func (tb *Torbox) doPostFormWithClient(client *request.Client, endpoint string, 
 
 // doDelete performs a DELETE request
 func (tb *Torbox) doDelete(endpoint string, payload interface{}) (*http.Response, error) {
+	tb.logger.Debug().Str("endpoint", endpoint).Msg("requesting torbox api")
+
 	var body io.Reader
 	if payload != nil {
 		data, err := json.Marshal(payload)
