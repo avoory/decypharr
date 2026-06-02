@@ -513,6 +513,11 @@ func (d *Downloader) processTorrentDownload(entry *storage.Entry) error {
 			d.logger.Error().Msgf("Failed to get download link for %s: %v", file.Name, err)
 			continue
 		}
+		d.logger.Debug().
+			Str("file", file.Name).
+			Str("url", downloadLink.DownloadLink).
+			Msg("Resolved direct download link")
+
 		tasks = append(tasks, downloadTask{file: file, link: downloadLink.DownloadLink})
 	}
 
@@ -705,6 +710,11 @@ func (d *Downloader) detectMultiSeason(torrent *storage.Entry) (bool, []SeasonIn
 
 // localDownloader downloads a file with grab so interrupted local downloads can resume cleanly.
 func (d *Downloader) localDownloader(downloadURL, filename string, byterange *[2]int64, progressCallback func(int64, int64)) error {
+	d.logger.Debug().
+		Str("url", downloadURL).
+		Str("filename", filepath.Base(filename)).
+		Msg("Starting file download")
+
 	startTime := time.Now()
 	requestedRange := "full"
 	req, err := grab.NewRequest(filename, downloadURL)
